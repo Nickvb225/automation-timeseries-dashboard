@@ -128,11 +128,9 @@ function App() {
       d3.max(orgData, d => d.workflow_execution_count) || 0
     );
 
-    // Add 15% padding on both ends for better spread
-    const yPadding = (maxExec - minExec) * 0.15;
-
+    // Fixed padding: 100 executions below min, 100 above max
     const yScale = d3.scaleLinear()
-      .domain([Math.max(0, minExec - yPadding), maxExec + yPadding])
+      .domain([Math.max(0, minExec - 100), maxExec + 100])
       .range([height, 0]);
 
     // Right Y axis: 7-day moving average (already calculated correctly, no division by org_count)
