@@ -119,7 +119,8 @@ function App() {
       .range([0, width]);
 
     // Find good Y axis bounds - include moving average in the same scale
-    const movingAvgValues = boxPlotData.map(d => d.moving_avg_7day / d.org_count);
+    // NOTE: moving_avg_7day is already an average per org, don't divide by org_count again
+    const movingAvgValues = boxPlotData.map(d => d.moving_avg_7day);
 
     const minExec = Math.min(
       d3.min(boxPlotData, d => d.percentile_5) || 0,
@@ -222,7 +223,7 @@ function App() {
       .attr('stop-opacity', 0.5);
 
     // Layer 1: Box plots with faster streaming animation
-    const boxWidth = Math.max(width / boxPlotData.length * 0.35, 3);  // Reduced width for less spacing
+    const boxWidth = Math.max(width / boxPlotData.length * 0.95, 3);  // Use 95% of available space per day
 
     boxPlotData.forEach((d, i) => {
       const x = xScale(d.execution_date as any);
@@ -283,7 +284,7 @@ function App() {
     });
 
     // Layer 2: Jitter plot with streaming animation - start early, overlap with box plots
-    const jitterWidth = boxWidth * 0.6;
+    const jitterWidth = boxWidth * 0.98;  // Use 98% of box width for jitter spread
 
     const dots = svg.selectAll('.org-dot')
       .data(orgData)
@@ -309,9 +310,10 @@ function App() {
       .attr('opacity', 0.35);  // Lower opacity for better visual hierarchy
 
     // Layer 3: 7-day moving average with path animation - use same Y axis as box plots
+    // NOTE: moving_avg_7day is already the average per org, no need to divide again
     const line = d3.line<BoxPlotStats>()
       .x(d => xScale(d.execution_date as any))
-      .y(d => yScale(d.moving_avg_7day / d.org_count));
+      .y(d => yScale(d.moving_avg_7day));
 
     const path = svg.append('path')
       .datum(boxPlotData)
