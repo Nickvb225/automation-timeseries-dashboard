@@ -93,7 +93,7 @@ function App() {
   const renderTimeSeriesChart = useCallback(() => {
     if (!chartRef.current) return;
 
-    const margin = { top: 80, right: 150, bottom: 100, left: 120 };
+    const margin = { top: 80, right: 250, bottom: 100, left: 120 };
     const containerWidth = chartRef.current.parentElement?.clientWidth || window.innerWidth - 64;
     const width = Math.max(containerWidth - margin.left - margin.right - 48, 1200);
     const height = 600 - margin.top - margin.bottom;
@@ -118,31 +118,26 @@ function App() {
       .domain([new Date(dateExtent[0].getTime() - paddingReduction), new Date(dateExtent[1].getTime() + paddingReduction)])
       .range([0, width]);
 
-    // Find good Y axis bounds - don't start at 0
+    // Find good Y axis bounds - include moving average in the same scale
+    const movingAvgValues = boxPlotData.map(d => d.moving_avg_7day / d.org_count);
+
     const minExec = Math.min(
       d3.min(boxPlotData, d => d.percentile_5) || 0,
-      d3.min(orgData, d => d.workflow_execution_count) || 0
+      d3.min(orgData, d => d.workflow_execution_count) || 0,
+      d3.min(movingAvgValues) || 0
     );
     const maxExec = Math.max(
       d3.max(boxPlotData, d => d.percentile_95) || 0,
-      d3.max(orgData, d => d.workflow_execution_count) || 0
+      d3.max(orgData, d => d.workflow_execution_count) || 0,
+      d3.max(movingAvgValues) || 0
     );
 
-    // Add 10% padding on both ends for better spread
-    const yPadding = (maxExec - minExec) * 0.1;
+    // Add 15% padding on both ends for better spread and visual hierarchy
+    const yPadding = (maxExec - minExec) * 0.15;
 
-    // Left Y axis - start from min value with padding
+    // Single Y axis for all data - no right axis needed
     const yScale = d3.scaleLinear()
       .domain([Math.max(0, minExec - yPadding), maxExec + yPadding])
-      .range([height, 0]);
-
-    // Right Y axis for moving average - also don't start at 0
-    const minMovingAvg = d3.min(boxPlotData, d => d.moving_avg_7day / d.org_count) || 0;
-    const maxMovingAvg = d3.max(boxPlotData, d => d.moving_avg_7day / d.org_count) || 0;
-    const movingAvgPadding = (maxMovingAvg - minMovingAvg) * 0.1;
-
-    const yScaleMovingAvg = d3.scaleLinear()
-      .domain([Math.max(0, minMovingAvg - movingAvgPadding), maxMovingAvg + movingAvgPadding])
       .range([height, 0]);
 
     // Color scale for orgs - use Rewst brand colors
@@ -199,29 +194,6 @@ function App() {
       .style('font-weight', '600')
       .text('Workflow Executions per Organization');
 
-    // Right Y Axis for Moving Average - Rewst style
-    const rightAxis = svg.append('g')
-      .attr('transform', `translate(${width},0)`)
-      .call(d3.axisRight(yScaleMovingAvg).ticks(10))
-      .style('font-size', '13px');
-
-    rightAxis.selectAll('text')
-      .style('fill', '#CFD8DC')
-      .style('font-weight', '500');
-
-    rightAxis.selectAll('line, path')
-      .style('stroke', '#504384');
-
-    svg.append('text')
-      .attr('transform', 'rotate(-90)')
-      .attr('x', -height / 2)
-      .attr('y', width + 85)
-      .attr('text-anchor', 'middle')
-      .style('font-size', '16px')
-      .style('fill', '#F9A100')
-      .style('font-weight', '600')
-      .text('7-Day Moving Average');
-
     // Grid lines - Rewst style
     svg.append('g')
       .attr('class', 'grid')
@@ -271,7 +243,7 @@ function App() {
         .duration(250)  // Faster - was 400ms
         .attr('y1', yScale(d.percentile_5))
         .attr('y2', yScale(d.percentile_95))
-        .attr('opacity', 0.8);
+        .attr('opacity', 0.9);  // More prominent
 
       // Box (25th to 75th percentile) with Rewst gradient - animate simultaneously with whisker
       const box = svg.append('rect')
@@ -282,7 +254,7 @@ function App() {
         .attr('fill', 'url(#boxGradient)')
         .attr('opacity', 0)
         .attr('stroke', '#009490')  // Rewst Primary Teal
-        .attr('stroke-width', 2)
+        .attr('stroke-width', 2.5)  // Thicker stroke for prominence
         .attr('rx', 2);
 
       box.transition()
@@ -290,7 +262,7 @@ function App() {
         .duration(300)  // Faster - was 500ms
         .attr('y', yScale(d.percentile_75))
         .attr('height', yScale(d.percentile_25) - yScale(d.percentile_75))
-        .attr('opacity', 0.7);
+        .attr('opacity', 0.85);  // More prominent
 
       // Median line - Rewst Fandango - animate with box
       const medianLine = svg.append('line')
@@ -334,23 +306,23 @@ function App() {
       .duration(300)  // Faster - was 500ms
       .attr('cy', d => yScale(d.workflow_execution_count))
       .attr('r', 2.5)
-      .attr('opacity', 0.5);
+      .attr('opacity', 0.35);  // Lower opacity for better visual hierarchy
 
-    // Layer 3: 7-day moving average with path animation - use right Y axis scale, start early
+    // Layer 3: 7-day moving average with path animation - use same Y axis as box plots
     const line = d3.line<BoxPlotStats>()
       .x(d => xScale(d.execution_date as any))
-      .y(d => yScaleMovingAvg(d.moving_avg_7day / d.org_count));
+      .y(d => yScale(d.moving_avg_7day / d.org_count));
 
     const path = svg.append('path')
       .datum(boxPlotData)
       .attr('fill', 'none')
       .attr('stroke', '#F9A100')  // Rewst Orange
-      .attr('stroke-width', 4)
+      .attr('stroke-width', 5)  // Thicker for better visual hierarchy
       .attr('stroke-linejoin', 'round')
       .attr('stroke-linecap', 'round')
       .attr('d', line)
       .attr('opacity', 0)
-      .attr('filter', 'drop-shadow(0 0 10px rgba(249, 161, 0, 0.7))');
+      .attr('filter', 'drop-shadow(0 0 12px rgba(249, 161, 0, 0.8))');
 
     const totalLength = (path.node() as any).getTotalLength();
 
@@ -401,10 +373,10 @@ function App() {
       .attr('transform', `translate(${width + 30}, 0)`);
 
     const legendItems = [
+      { label: '7-Day Moving Avg', color: '#F9A100', type: 'line', width: 5 },
       { label: 'IQR Box (25-75%)', color: '#009490', type: 'rect' },
       { label: 'Median Line', color: '#C64A9A', type: 'line', width: 3 },
       { label: 'Whiskers (5-95%)', color: '#90A4AE', type: 'line', width: 2 },
-      { label: '7-Day Avg (Right)', color: '#F9A100', type: 'line', width: 4 },
       { label: 'Organization Data', color: '#2BB5B6', type: 'circle' }
     ];
 
@@ -581,7 +553,7 @@ function App() {
           <p className="text-xs text-[#CFD8DC]">
             <span className="text-[#009490] font-semibold">Box plot:</span> IQR (25th-75th percentile) •
             <span className="text-[#90A4AE] font-semibold"> Whiskers:</span> 5th-95th percentile •
-            <span className="text-[#F9A100] font-semibold"> Orange line:</span> 7-day moving average (right axis)
+            <span className="text-[#F9A100] font-semibold"> Orange line:</span> 7-day moving average
           </p>
         </div>
       </div>
